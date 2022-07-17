@@ -279,6 +279,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "wayland-protocols"
+version = "0.30.0-beta.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e47c45a60d531d5a513601f47f51a4743901836778ddae208ae9124606be1719"
+dependencies = [
+ "bitflags",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-scanner",
+]
+
+[[package]]
+name = "wayland-protocols-wlr"
+version = "0.1.0-beta.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0b477d16e0c1d7512f11799403c8dbb1964e756667208569ec0ea2bd1abbccb"
+dependencies = [
+ "bitflags",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-scanner",
+]
+
+[[package]]
 name = "wayland-scanner"
 version = "0.30.0-beta.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -332,6 +357,8 @@ dependencies = [
  "libc",
  "udev",
  "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
  "xkbcommon",
 ]
 

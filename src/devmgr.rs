@@ -25,7 +25,7 @@ pub fn devmgr_start(devpath: &str) -> (i32, pid_t) {
         // ? Create fork
         let child: pid_t = fork();
         if child < 0 {
-            eprintln!("devmgr: forg: {}", errno::errno());
+            eprintln!("devmgr: fork: {}", errno::errno());
             close(sock[0]);
             close(sock[1]);
             //TODO: Panic
