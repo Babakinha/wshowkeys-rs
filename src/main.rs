@@ -1,5 +1,7 @@
 pub mod devmgr;
 pub mod root_utils;
+pub mod cairo_utils;
+pub mod wsk_keypress;
 
 pub mod libinput_stuff;
 pub mod wayland_stuff;
@@ -19,9 +21,10 @@ use wayland_client::{
 };
 
 use devmgr::{devmgr_start, devmgr_finish};
-use libc::{pid_t, c_void};
+use libc::{pid_t, c_void, timespec};
 use wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_manager_v1::ZxdgOutputManagerV1;
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1::{ZwlrLayerShellV1, self}, zwlr_layer_surface_v1::{ZwlrLayerSurfaceV1, Anchor}};
+use wsk_keypress::WskKeypress;
 use xkbcommon::xkb;
 
 use crate::libinput_stuff::handle_libinput_event;
@@ -70,6 +73,10 @@ pub struct Wsk {
     width: u32,
     height: u32,
     scale: i32,
+
+    /* Keys */
+    keys: Vec<WskKeypress>,
+    //last_keytime: timespec,
 
     /* Misc */
     run: bool,
