@@ -1,4 +1,4 @@
-use crate::{Wsk, cairo_utils::ToSubpixelOrder, cairo_utils::SetSourceU32};
+use crate::{Wsk, cairo_utils::ToSubpixelOrder, cairo_utils::Set&SourceU32, pango_stuff::{get_text_size, pango_print}};
 
 /* Rendering stuff (with cairo) */
 
@@ -22,13 +22,13 @@ pub fn render_frame(wsk: &mut Wsk) {
     cairo.paint().unwrap();
     cairo.restore().unwrap();
 
-    let scale = if wsk.scale == 0 { 1 } else { wsk.scale };
+    let scale = if wsk.scale == 0.0 { 1.0 } else { wsk.scale };
     let width: u32 = 0;
     let height: u32 = 0;
     render_to_cairo(wsk, &cairo, scale, width, height)
 }
 
-fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: i32, width: u32, height: u32) {
+fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32, height: u32) {
     cairo.set_operator(cairo::Operator::Source);
     cairo.set_source_u32(wsk.background);
     cairo.paint().unwrap();
@@ -49,9 +49,20 @@ fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: i32, width: u32
 
         cairo.move_to(width.into(), 0.0);
 
+        let mut w: i32 = 0;
+        let mut h: i32 = 0;
         if special {
-            //TODO: Pango
+            let text = format!("{}+", name);
+            (w, h, _) = get_text_size(cairo, &wsk.font, scale, &text);
+            pango_print(cairo, &wsk.font, scale, &text);
+        } else {
+            let text = format!("{}", name);
+            (w, h, _) = get_text_size(cairo, &wsk.font, scale, &text);
+            pango_print(cairo, &wsk.font, scale, &text);
         }
+
+        width += w;
+        height.max(h);
 
     }
 

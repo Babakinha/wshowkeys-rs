@@ -18,3 +18,4 @@ wayland-protocols = { version = "0.30.0-beta.8", features = ["client", "unstable
 wayland-protocols-wlr = { version = "0.1.0-beta.8", features = ["client"] }
 
 cairo-rs = "0.15.12"
+pangocairo = "0.15.1"

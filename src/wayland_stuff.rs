@@ -67,9 +67,11 @@ impl Dispatch<WlRegistry, ()> for Wsk {
                 }
 
                 "wl_output" => {
+                    dbg!("Output!");
+                    //TODO: support multiple outputs
                     let output: WlOutput = proxy.bind(name, version, qhandle, *data).unwrap();
+                    wsk.scale = 1.0;
                     wsk.wl_output = Some(output);
-                    //TODO: This
                 },
 
                 _ => {}
@@ -211,7 +213,7 @@ impl Dispatch<WlOutput, ()> for Wsk {
             },
 
             wl_output::Event::Scale { factor } => {
-                wsk.scale = factor;
+                wsk.scale = factor as f64;
             },
 
             //wl_output::Event::Name { name } => todo!(),

@@ -1,10 +1,12 @@
 pub mod devmgr;
 pub mod root_utils;
 pub mod cairo_utils;
+pub mod pango_utils;
 pub mod wsk_keypress;
 
 pub mod libinput_stuff;
 pub mod wayland_stuff;
+pub mod pango_stuff;
 pub mod render_stuff;
 
 
@@ -21,7 +23,7 @@ use wayland_client::{
 };
 
 use devmgr::{devmgr_start, devmgr_finish};
-use libc::{pid_t, c_void, timespec};
+use libc::{pid_t, c_void};
 use wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_manager_v1::ZxdgOutputManagerV1;
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1::{ZwlrLayerShellV1, self}, zwlr_layer_surface_v1::{ZwlrLayerSurfaceV1, Anchor}};
 use wsk_keypress::WskKeypress;
@@ -72,7 +74,7 @@ pub struct Wsk {
 
     width: u32,
     height: u32,
-    scale: i32,
+    scale: f64,
 
     /* Keys */
     keys: Vec<WskKeypress>,
@@ -91,7 +93,7 @@ impl Wsk {
         if self.frame_scheduled {
             self.dirty = true;
         }else if self.wl_surface.is_some() {
-            //TODO: wsk.render_frame();
+            render_stuff::render_frame(self);
         }
     }
 }
