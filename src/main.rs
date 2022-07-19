@@ -7,23 +7,26 @@ pub mod wsk_keypress;
 pub mod libinput_stuff;
 pub mod wayland_stuff;
 pub mod pango_stuff;
+pub mod shm_stuff;
 pub mod render_stuff;
 
+use std::{os::unix::prelude::AsRawFd, mem::size_of};
 
 use input::{
     Libinput,
     ffi::{libinput_set_user_data},
 };
 use libinput_stuff::LibinputImpl;
+use shm_stuff::PoolBuffer;
 use wayland_client::{
     protocol::{
-        wl_display::WlDisplay, wl_compositor::WlCompositor, wl_shm::WlShm, wl_seat::WlSeat, wl_keyboard::WlKeyboard, wl_surface::WlSurface, wl_output::{Subpixel, WlOutput},
+        wl_display::WlDisplay, wl_compositor::WlCompositor, wl_shm::WlShm, wl_seat::WlSeat, wl_keyboard::WlKeyboard, wl_surface::WlSurface, wl_output::{Subpixel, WlOutput}, wl_buffer::WlBuffer,
     },
-    Connection,
+    Connection, QueueHandle,
 };
 
 use devmgr::{devmgr_start, devmgr_finish};
-use libc::{pid_t, c_void};
+use libc::{pid_t, c_void, pollfd, POLLIN, poll, nfds_t};
 use wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_manager_v1::ZxdgOutputManagerV1;
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1::{ZwlrLayerShellV1, self}, zwlr_layer_surface_v1::{ZwlrLayerSurfaceV1, Anchor}};
 use wsk_keypress::WskKeypress;
@@ -57,6 +60,7 @@ pub struct Wsk {
     /* Wayland stuff */
     wl_connection: Option<Connection>,
     wl_display: Option<WlDisplay>,
+    wl_qhandle: Option<QueueHandle<Wsk>>,
     wl_compositor: Option<WlCompositor>,
     wl_shm: Option<WlShm>,
 
@@ -75,6 +79,9 @@ pub struct Wsk {
     width: u32,
     height: u32,
     scale: f64,
+
+    buffers: Vec<PoolBuffer>,
+    current_buffer: Option<PoolBuffer>,
 
     /* Keys */
     keys: Vec<WskKeypress>,
@@ -145,9 +152,24 @@ fn main() {
     let mut wl_event_queue = wsk.wl_connection.as_ref().unwrap().new_event_queue();
     let wl_qhandle = wl_event_queue.handle();
 
-    wsk.wl_display.as_mut().unwrap().get_registry(&wl_qhandle, ()).unwrap();
+    wsk.wl_qhandle = Some(wl_qhandle);
+    let wl_qhandle = wsk.wl_qhandle.as_ref().unwrap();
+
+    wsk.wl_display.as_mut().unwrap().get_registry(wl_qhandle, ()).unwrap();
 
     wl_event_queue.roundtrip(&mut wsk).unwrap();
+
+    //Check everything
+    if
+        wsk.wl_compositor.is_none() ||
+        wsk.wl_shm.is_none() ||
+        wsk.wl_seat.is_none() ||
+        wsk.wl_layer_shell.is_none()
+    {
+        eprintln!("Error: Required Wayland interface not present");
+        exit(wsk);
+        return;
+    }
 
     //Getting layer shell
     let layer_surface = wsk.wl_layer_shell.as_mut().unwrap().get_layer_surface(
@@ -155,7 +177,7 @@ fn main() {
         None,
         zwlr_layer_shell_v1::Layer::Top,
         "showkeys".to_string(),
-        &wl_qhandle,
+        wl_qhandle,
         ()
     ).unwrap();
 
@@ -168,21 +190,49 @@ fn main() {
     wsk.wl_layer_surface = Some(layer_surface);
     wsk.wl_surface.as_ref().unwrap().commit();
 
-    // The end is never the end is never the end is never the end is never the...
     let mut input = wsk.input.as_mut().unwrap().clone(); // ? There is no problem to clone right (i think its still a pointer)
-    // Temp Main loop
-    while wsk.run {
-        wl_event_queue.dispatch_pending(&mut wsk).unwrap();
+    let mut pollfds: [pollfd; 2] = [
+        pollfd { fd: input.as_raw_fd(), events: POLLIN, revents: 0 },
+        pollfd { fd: wl_event_queue.prepare_read().unwrap().connection_fd(), events: POLLIN, revents: 0 }
+    ];
 
-        //Handle libinput events
-        input.dispatch().unwrap();
-        for event in &mut input {
-            println!("Event!");
-            handle_libinput_event(&mut wsk, &event);
+    // The end is never the end is never the end is never the end is never the...
+    while wsk.run {
+
+        //TODO: Flush display?
+        wl_event_queue.flush().unwrap();
+
+        /* Poll */
+        let mut timeout = -1;
+        if !wsk.keys.is_empty() {
+            timeout = 100;
+        }
+
+        if unsafe { poll(pollfds.as_mut_ptr(), (size_of::<pollfd>() * pollfds.len()) as nfds_t, timeout) } < 0 {
+            eprintln!("poll: {}", errno::errno());
+            break;
+        }
+
+
+        /* Dispatch */
+        if (pollfds[0].revents & POLLIN) != 0 {
+            input.dispatch().unwrap();
+            for event in &mut input {
+                println!("Event!");
+                handle_libinput_event(&mut wsk, &event);
+            }
+        }
+
+        if (pollfds[1].revents & POLLIN) != 0 {
+            wl_event_queue.dispatch_pending(&mut wsk).unwrap();
         }
     }
 
     // Dont forget!
+    exit(wsk);
+}
+
+pub fn exit(wsk: Wsk) {
     drop(wsk.input.unwrap());
     devmgr_finish(wsk.devmgr, wsk.devmgr_pid);
 }

@@ -6,7 +6,7 @@ use wayland_client::{
         wl_compositor::{WlCompositor, self},
         wl_shm::{WlShm, self},
         wl_seat::{WlSeat, self},
-        wl_keyboard::{WlKeyboard, self, KeymapFormat}, wl_surface::{WlSurface, self}, wl_output::{WlOutput, self}
+        wl_keyboard::{WlKeyboard, self, KeymapFormat}, wl_surface::{WlSurface, self}, wl_output::{WlOutput, self}, wl_shm_pool::{WlShmPool, self}, wl_buffer::{WlBuffer, self}
     },
     Connection,
     QueueHandle,
@@ -16,7 +16,7 @@ use wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_manager_v1::{Zx
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1::{ZwlrLayerShellV1, self}, zwlr_layer_surface_v1::{ZwlrLayerSurfaceV1, self}};
 use xkbcommon::xkb;
 
-use crate::Wsk;
+use crate::{Wsk, shm_stuff::PoolBuffer};
 
 /* Wayland */
 
@@ -48,6 +48,10 @@ impl Dispatch<WlRegistry, ()> for Wsk {
                     let shm: WlShm = proxy.bind(name, version, qhandle, *data).unwrap();
                     wsk.wl_shm = Some(shm);
                 },
+
+                "wl_shm_pool" => {
+
+                }
 
                 "wl_seat" => {
                     let seat: WlSeat = proxy.bind(name, version, qhandle, *data).unwrap();
@@ -223,6 +227,22 @@ impl Dispatch<WlOutput, ()> for Wsk {
     }
 }
 
+//Buffers
+// Comment loading...
+impl Dispatch<WlBuffer, ()> for Wsk {
+    fn event(
+        wsk: &mut Self,
+        proxy: &WlBuffer,
+        event: <WlBuffer as wayland_client::Proxy>::Event,
+        data: &(),
+        conn: &Connection,
+        qhandle: &QueueHandle<Self>,
+    ) {
+        if let wl_buffer::Event::Release {} = event {
+           // data.busy = false;
+        }
+    }
+}
 /* Ignore this code (Boilerplate stuff) */
 impl Dispatch<WlCompositor, ()> for Wsk {
     fn event(
@@ -250,6 +270,18 @@ impl Dispatch<WlShm, ()> for Wsk {
     }
 }
 
+impl Dispatch<WlShmPool, ()> for Wsk {
+    fn event(
+        _: &mut Self,
+        _: &WlShmPool,
+        _: wl_shm_pool::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Nothing we want here
+    }
+}
 
 impl Dispatch<ZxdgOutputManagerV1, ()> for Wsk {
     fn event(

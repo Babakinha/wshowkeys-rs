@@ -1,4 +1,4 @@
-use crate::{Wsk, cairo_utils::ToSubpixelOrder, cairo_utils::Set&SourceU32, pango_stuff::{get_text_size, pango_print}};
+use crate::{Wsk, cairo_utils::ToSubpixelOrder, cairo_utils::SetSourceU32, pango_stuff::{get_text_size, pango_print}};
 
 /* Rendering stuff (with cairo) */
 
@@ -23,12 +23,52 @@ pub fn render_frame(wsk: &mut Wsk) {
     cairo.restore().unwrap();
 
     let scale = if wsk.scale == 0.0 { 1.0 } else { wsk.scale };
-    let width: u32 = 0;
-    let height: u32 = 0;
-    render_to_cairo(wsk, &cairo, scale, width, height)
+    let mut width: u32 = 0;
+    let mut height: u32 = 0;
+    (width, height) = render_to_cairo(wsk, &cairo, scale, width, height);
+
+    if height / scale as u32 != wsk.height ||
+        width / scale as u32 != wsk.width  ||
+        wsk.width == 0
+    {
+        //Reconfigure surface
+        if width == 0 || height == 0 {
+            wsk.wl_surface.as_ref().unwrap().attach(None, 0, 0);
+        } else {
+            wsk.wl_layer_surface.as_ref().unwrap().set_size(width / scale as u32, height / scale as u32);
+        }
+
+        //TODO: This could be a infinite loop if the compositor set us a diferrent height than we want to
+        wsk.wl_surface.as_ref().unwrap().commit();
+    } else if height > 0 {
+        //Replay recording into shm and send it off
+        //TODO: get_next_buffer
+        if wsk.current_buffer.is_none() {
+            drop(recorder);
+            drop(cairo);
+            return;
+        }
+
+        let shm = wsk.current_buffer.as_ref().unwrap().cairo.as_ref().unwrap();
+        shm.save().unwrap();
+        shm.set_operator(cairo::Operator::Clear);
+        shm.paint().unwrap();
+        shm.restore().unwrap();
+
+        shm.set_source_surface(&recorder, 0.0, 0.0).unwrap();
+        shm.paint().unwrap();
+
+        let wl_surface = wsk.wl_surface.as_ref().unwrap();
+        wl_surface.set_buffer_scale(scale as i32);
+        wl_surface.damage_buffer(0, 0, wsk.width as i32, wsk.height as i32);
+        wl_surface.commit();
+    }
 }
 
-fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32, height: u32) {
+fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32, height: u32) -> (u32, u32) {
+    let mut width = width;
+    let mut height = height;
+
     cairo.set_operator(cairo::Operator::Source);
     cairo.set_source_u32(wsk.background);
     cairo.paint().unwrap();
@@ -47,10 +87,10 @@ fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32
             cairo.set_source_u32(wsk.foreground);
         }
 
-        cairo.move_to(width.into(), 0.0);
+        cairo.move_to(width as f64, 0.0);
 
-        let mut w: i32 = 0;
-        let mut h: i32 = 0;
+        let w: i32;
+        let h: i32;
         if special {
             let text = format!("{}+", name);
             (w, h, _) = get_text_size(cairo, &wsk.font, scale, &text);
@@ -61,11 +101,13 @@ fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32
             pango_print(cairo, &wsk.font, scale, &text);
         }
 
-        width += w;
-        height.max(h);
+        width += w as u32;
+        height = height.max(h as u32);
 
     }
 
     wsk.keys = vec![];
+
+    return (width, height);
 
 }
