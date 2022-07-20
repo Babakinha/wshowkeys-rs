@@ -159,15 +159,19 @@ fn main() {
 
     //Check everything
     if
-        wsk.wl_compositor.is_none() ||
-        wsk.wl_shm.is_none() ||
-        wsk.wl_seat.is_none() ||
-        wsk.wl_layer_shell.is_none()
+    wsk.wl_compositor.is_none() ||
+    wsk.wl_shm.is_none() ||
+    wsk.wl_seat.is_none() ||
+    wsk.wl_layer_shell.is_none()
     {
         eprintln!("Error: Required Wayland interface not present");
         exit(wsk);
         return;
     }
+
+    //Get Keyboard
+    wsk.wl_seat.as_ref().unwrap().get_keyboard(wsk.wl_qhandle.as_ref().unwrap(), ()).unwrap();
+    wl_event_queue.roundtrip(&mut wsk).unwrap();
 
     //Getting layer shell
     let layer_surface = wsk.wl_layer_shell.as_mut().unwrap().get_layer_surface(

@@ -1,4 +1,6 @@
-use libc::close;
+use std::{ptr::null_mut, ffi::CStr};
+
+use libc::{close, mmap, PROT_READ, MAP_SHARED, munmap, MAP_FAILED, c_char};
 use wayland_client::{
     Dispatch,
     protocol::{
@@ -139,13 +141,14 @@ impl Dispatch<WlSeat, ()> for Wsk {
         _conn: &Connection,
         qhandle: &QueueHandle<Self>,
     ) {
+        dbg!("Test");
         match event {
             wl_seat::Event::Capabilities { capabilities: WEnum::Value(capibilities) } => {
                 if wsk.wl_keyboard.is_some() {
                     //TODO: Support for multiple seats
                     return;
                 }
-    
+
                 if capibilities.contains(wl_seat::Capability::Keyboard) {
                     wsk.wl_keyboard = Some(proxy.get_keyboard(qhandle, *data).unwrap());
                 } else {
@@ -154,8 +157,9 @@ impl Dispatch<WlSeat, ()> for Wsk {
                 }
             },
             wl_seat::Event::Name { name } => {
+                dbg!(name);
                 // TODO: Support for multiple seats
-                if let Err(_) = wsk.input.as_mut().unwrap().udev_assign_seat(name.as_str()) {
+                if let Err(_) = wsk.input.as_mut().unwrap().udev_assign_seat("seat0") {
                     eprintln!("Failed to assign libinput seat");
                     wsk.run = false;
                 };
@@ -178,11 +182,23 @@ impl Dispatch<WlKeyboard, ()> for Wsk {
         _qhandle: &QueueHandle<Self>,
     ) {
         if let wl_keyboard::Event::Keymap { format: WEnum::Value(format), fd, size } = event {
-            if format != KeymapFormat::XkbV1 {
+
+            let map_shm = unsafe { mmap(null_mut(), size as usize, PROT_READ, MAP_SHARED, fd, 0) };
+            if map_shm == MAP_FAILED {
                 unsafe { close(fd); };
+                eprintln!("Unable to mmap keymap: {}", errno::errno());
                 return;
             }
 
+            if format != KeymapFormat::XkbV1 {
+                unsafe {
+                    munmap(map_shm, size as usize);
+                    close(fd);
+                };
+                return;
+            }
+
+            /*
             let xkb_keymap = xkb::Keymap::new_from_fd(
                 wsk.xkb_context.as_ref().unwrap(),
                 fd,
@@ -190,10 +206,22 @@ impl Dispatch<WlKeyboard, ()> for Wsk {
                 xkb::KEYMAP_FORMAT_TEXT_V1,
                 xkb::KEYMAP_COMPILE_NO_FLAGS
             ).unwrap();
-            unsafe { close(fd); };
+            */
 
+            let xkb_keymap = xkb::Keymap::new_from_string(
+                wsk.xkb_context.as_ref().unwrap(),
+                unsafe { CStr::from_ptr(map_shm as *const _ as * const c_char).to_str().unwrap().to_string() },
+                xkb::KEYMAP_FORMAT_TEXT_V1,
+                xkb::COMPILE_NO_FLAGS
+            ).unwrap();
+
+            unsafe {
+                munmap(map_shm, size as usize);
+                close(fd);
+            };
             let xkb_state = xkb::State::new(&xkb_keymap);
-            // ? unref state
+
+            // ? Does this unref state by drop the old ones?
             wsk.xkb_keymap = Some(xkb_keymap);
             wsk.xkb_state = Some(xkb_state);
         }
