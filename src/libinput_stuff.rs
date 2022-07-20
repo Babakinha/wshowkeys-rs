@@ -7,13 +7,14 @@ use xkbcommon::xkb;
 use crate::{devmgr::devmgr_open, Wsk};
 
 /* Libinput */
-pub struct LibinputImpl;
+pub struct LibinputImpl {
+    pub devmgr: i32,
+}
 
 impl LibinputInterface for LibinputImpl {
     fn open_restricted(&mut self, path: &Path, _flags: i32) -> Result<i32, i32> {
-        let fd: *mut i32 = self as *mut _ as *mut i32;
         unsafe {
-            devmgr_open(*fd, path.to_str().unwrap().to_string())
+            devmgr_open(self.devmgr, path.to_str().unwrap().to_string())
         }
     }
 

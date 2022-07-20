@@ -1,4 +1,5 @@
 pub mod devmgr;
+pub mod rootinput;
 pub mod root_utils;
 pub mod cairo_utils;
 pub mod pango_utils;
@@ -132,13 +133,7 @@ fn main() {
     //TODO: Parse options
 
     /* Libinput */
-    wsk.input = Some(Libinput::new_with_udev(LibinputImpl));
-    unsafe {
-        libinput_set_user_data(
-            &mut wsk.input.as_ref().unwrap() as *mut _ as *mut input::ffi::libinput,
-            &mut wsk.devmgr as *mut _ as *mut c_void
-        );
-    };
+    wsk.input = Some(Libinput::new_with_udev(LibinputImpl { devmgr: devmgr } ));
 
     /* Xkb */
     wsk.xkb_context = Some(xkb::Context::new(xkb::CONTEXT_NO_FLAGS));
@@ -169,9 +164,12 @@ fn main() {
         return;
     }
 
-    //Get Keyboard
+    //Getting Keyboard (important for libinput)
     wsk.wl_seat.as_ref().unwrap().get_keyboard(wsk.wl_qhandle.as_ref().unwrap(), ()).unwrap();
     wl_event_queue.roundtrip(&mut wsk).unwrap();
+
+    //Getting surface
+    wsk.wl_surface = Some(wsk.wl_compositor.as_ref().unwrap().create_surface(wsk.wl_qhandle.as_ref().unwrap(), ()).unwrap());
 
     //Getting layer shell
     let layer_surface = wsk.wl_layer_shell.as_mut().unwrap().get_layer_surface(
@@ -192,6 +190,7 @@ fn main() {
     wsk.wl_layer_surface = Some(layer_surface);
     wsk.wl_surface.as_ref().unwrap().commit();
 
+    //Polls
     let mut input = wsk.input.as_mut().unwrap().clone(); // ? There is no problem to clone right (i think its still a pointer)
     let mut pollfds: [pollfd; 2] = [
         pollfd { fd: input.as_raw_fd(), events: POLLIN, revents: 0 },
@@ -200,8 +199,8 @@ fn main() {
 
     // The end is never the end is never the end is never the end is never the...
     while wsk.run {
-
         //TODO: Flush display?
+        wl_event_queue.blocking_dispatch(&mut wsk).unwrap();
         wl_event_queue.flush().unwrap();
 
         /* Poll */
@@ -226,7 +225,6 @@ fn main() {
         }
 
         if (pollfds[1].revents & POLLIN) != 0 {
-            wl_event_queue.dispatch_pending(&mut wsk).unwrap();
         }
     }
 

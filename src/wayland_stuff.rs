@@ -18,7 +18,7 @@ use wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_manager_v1::{Zx
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1::{ZwlrLayerShellV1, self}, zwlr_layer_surface_v1::{ZwlrLayerSurfaceV1, self}};
 use xkbcommon::xkb;
 
-use crate::{Wsk, shm_stuff::PoolBuffer};
+use crate::Wsk;
 
 /* Wayland */
 
@@ -141,7 +141,6 @@ impl Dispatch<WlSeat, ()> for Wsk {
         _conn: &Connection,
         qhandle: &QueueHandle<Self>,
     ) {
-        dbg!("Test");
         match event {
             wl_seat::Event::Capabilities { capabilities: WEnum::Value(capibilities) } => {
                 if wsk.wl_keyboard.is_some() {
@@ -156,8 +155,7 @@ impl Dispatch<WlSeat, ()> for Wsk {
                     wsk.run = false;
                 }
             },
-            wl_seat::Event::Name { name } => {
-                dbg!(name);
+            wl_seat::Event::Name { name: _ } => {
                 // TODO: Support for multiple seats
                 if let Err(_) = wsk.input.as_mut().unwrap().udev_assign_seat("seat0") {
                     eprintln!("Failed to assign libinput seat");
