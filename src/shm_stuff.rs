@@ -1,12 +1,15 @@
-use libc::{EEXIST, EINTR, shm_open, O_RDWR, O_CREAT, O_EXCL, shm_unlink, ftruncate, close};
-use wayland_client::protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface, wl_shm::{WlShm, self}};
+use std::ptr::null_mut;
+
+use cairo::ImageSurface;
+use libc::{EEXIST, EINTR, shm_open, O_RDWR, O_CREAT, O_EXCL, shm_unlink, ftruncate, close, PROT_READ, PROT_WRITE, MAP_SHARED, c_void};
+use wayland_client::protocol::{wl_buffer::WlBuffer, wl_shm};
 
 use crate::Wsk;
 
 #[derive(Default)]
 pub struct PoolBuffer {
     pub buffer: Option<WlBuffer>,
-    pub surface: Option<WlSurface>,
+    pub surface: Option<ImageSurface>,
 
     pub cairo: Option<cairo::Context>,
     pub pango: Option<pangocairo::pango::Context>,
@@ -14,7 +17,7 @@ pub struct PoolBuffer {
     pub width: u32,
     pub height: u32,
 
-    //TODO: data
+    pub data: Option<*mut c_void>,
     pub busy: bool
 }
 
@@ -27,7 +30,7 @@ fn rand_string(len: usize) -> String {
 
 
 fn create_shm_file() -> i32 {
-    let retries = 100;
+    let mut retries = 100;
     while retries > 0 && errno::errno().0 == EEXIST {
         retries -= 1;
         let name = format!("/wl_shm-{}", rand_string(6));
@@ -64,7 +67,9 @@ fn allocate_shm_file(size: i64) -> i32 {
 
 /* Buffer */
 
-pub fn create_buffer(wsk: &mut Wsk, buf: &PoolBuffer, width: u32, height: u32, format: wl_shm::Format) {
+// ? Is returning and using the buf right?
+pub fn create_buffer<'a>(wsk: &mut Wsk, buf: &mut PoolBuffer, width: u32, height: u32, format: wl_shm::Format) {
+    //let mut buf = PoolBuffer::default();
     let shm = wsk.wl_shm.as_ref().unwrap();
     let stride: u32 = width * 4;
     let size = stride * height;
@@ -72,8 +77,27 @@ pub fn create_buffer(wsk: &mut Wsk, buf: &PoolBuffer, width: u32, height: u32, f
     let fd = allocate_shm_file(size as i64);
     assert!(fd != -1);
 
+    // ? Is there a Rusty way to do this
+    let data = unsafe { libc::mmap(null_mut(), size as usize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0) };
+
     let pool = shm.create_pool(fd, size as i32, wsk.wl_qhandle.as_ref().unwrap(), ()).unwrap();
-    pool.create_buffer(0, width as i32, height as i32, stride as i32, format, wsk.wl_qhandle.as_ref().unwrap(), ());
+    buf.buffer = Some(pool.create_buffer(
+        0, width as i32, height as i32, stride as i32, format, wsk.wl_qhandle.as_ref().unwrap(), ()
+    ).unwrap());
+    pool.destroy(); // ? Is this the same as drop(pool)
+    unsafe { close(fd); };
+
+    buf.width = width;
+    buf.height = height;
+    buf.data = Some(data);
+    buf.surface = Some( unsafe { cairo::ImageSurface::create_for_data_unsafe(
+        data as *mut _ as *mut u8, cairo::Format::ARgb32, width as i32, height as i32, stride as i32
+    ).unwrap() });
+    buf.cairo = Some(cairo::Context::new(buf.surface.as_ref().unwrap()).unwrap());
+    buf.pango = Some(pangocairo::create_context(buf.cairo.as_ref().unwrap()).unwrap());
+
+    //return buf;
+
 }
 
 pub fn get_next_buffer(wsk: &mut Wsk, pool: Vec<PoolBuffer>, width: u32, height: u32) -> PoolBuffer {
@@ -95,7 +119,7 @@ pub fn get_next_buffer(wsk: &mut Wsk, pool: Vec<PoolBuffer>, width: u32, height:
     }
 
     if buffer.buffer.is_none() {
-        buffer.buffer = create_buffer(wsk, &buffer, width, height, wl_shm::Format::Argb8888); // ? user-defined
+        create_buffer(wsk, &mut buffer, width, height, wl_shm::Format::Argb8888);
     }
 
     buffer.busy = true;

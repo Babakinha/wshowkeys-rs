@@ -232,17 +232,21 @@ impl Dispatch<WlOutput, ()> for Wsk {
 impl Dispatch<WlBuffer, ()> for Wsk {
     fn event(
         wsk: &mut Self,
-        proxy: &WlBuffer,
+        _proxy: &WlBuffer,
         event: <WlBuffer as wayland_client::Proxy>::Event,
-        data: &(),
-        conn: &Connection,
-        qhandle: &QueueHandle<Self>,
+        _data: &(),
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
     ) {
         if let wl_buffer::Event::Release {} = event {
-           // data.busy = false;
+            // ? Is there a better way to do this with udata?
+            unsafe {
+                (*wsk.temp_buffer.unwrap()).busy = false;
+            }
         }
     }
 }
+
 /* Ignore this code (Boilerplate stuff) */
 impl Dispatch<WlCompositor, ()> for Wsk {
     fn event(

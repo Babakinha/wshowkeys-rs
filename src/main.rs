@@ -81,6 +81,7 @@ pub struct Wsk {
     scale: f64,
 
     buffers: Vec<PoolBuffer>,
+    temp_buffer: Option<*mut PoolBuffer>,
     current_buffer: Option<PoolBuffer>,
 
     /* Keys */
@@ -150,12 +151,9 @@ fn main() {
 
     //Setting stuff
     let mut wl_event_queue = wsk.wl_connection.as_ref().unwrap().new_event_queue();
-    let wl_qhandle = wl_event_queue.handle();
+    wsk.wl_qhandle = Some(wl_event_queue.handle());
 
-    wsk.wl_qhandle = Some(wl_qhandle);
-    let wl_qhandle = wsk.wl_qhandle.as_ref().unwrap();
-
-    wsk.wl_display.as_mut().unwrap().get_registry(wl_qhandle, ()).unwrap();
+    wsk.wl_display.as_mut().unwrap().get_registry(wsk.wl_qhandle.as_ref().unwrap(), ()).unwrap();
 
     wl_event_queue.roundtrip(&mut wsk).unwrap();
 
@@ -177,7 +175,7 @@ fn main() {
         None,
         zwlr_layer_shell_v1::Layer::Top,
         "showkeys".to_string(),
-        wl_qhandle,
+        wsk.wl_qhandle.as_ref().unwrap(),
         ()
     ).unwrap();
 
