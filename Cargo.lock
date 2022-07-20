@@ -102,6 +102,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "filedesc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b756e4aa03e389900cdd8520b5ea1903a003740adfe885905d5b0495c8371180"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -382,6 +391,16 @@ name = "pkg-config"
 version = "0.3.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1df8c4ec4b0627e53bdf214615ad287367e482558cf84b109250b37464dc03ae"
+
+[[package]]
+name = "posix-socket"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57417f61178ba4f4baf8cc58fbbdf23bf1bffa2dc701b8306df2f2ce9cc95273"
+dependencies = [
+ "filedesc",
+ "libc",
+]
 
 [[package]]
 name = "ppv-lite86"
@@ -691,6 +710,7 @@ dependencies = [
  "input",
  "libc",
  "pangocairo",
+ "posix-socket",
  "rand",
  "udev",
  "wayland-client",

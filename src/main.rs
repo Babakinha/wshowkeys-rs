@@ -18,6 +18,7 @@ use input::{
     ffi::{libinput_set_user_data},
 };
 use libinput_stuff::LibinputImpl;
+use rootinput::RootInput;
 use shm_stuff::PoolBuffer;
 use wayland_client::{
     protocol::{
@@ -109,6 +110,9 @@ impl Wsk {
 
 fn main() {
     /* Running as root :O */
+    RootInput::start();
+    return;
+
     let mut wsk = Wsk::default();
 
     let (devmgr, devmgr_pid) = devmgr_start("/dev/input/");
