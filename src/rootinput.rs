@@ -1,41 +1,43 @@
-use std::{io::IoSlice, mem::size_of};
+use std::{io::{IoSlice, IoSliceMut, self}, mem::size_of, ptr::null_mut, ffi::CString};
 
-use libc::{SOCK_SEQPACKET, fork, pid_t, CMSG_SPACE};
-use posix_socket::UnixSocket;
+use libc::{SOCK_SEQPACKET, fork, pid_t, CMSG_SPACE, c_void, CMSG_FIRSTHDR, SOL_SOCKET, SCM_RIGHTS, CMSG_LEN, memcpy, CMSG_DATA, EINTR, O_NONBLOCK, O_RDONLY, O_CLOEXEC, O_NOCTTY};
+use posix_socket::{UnixSocket, ancillary::SocketAncillary};
 
 use crate::root_utils::{is_root, drop_root};
 
 /* Msg */
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 enum MsgType {
     Open,
-    Close
+    End
 }
 
 struct Msg {
     msg_type: MsgType,
-    path: String
+    fd: Option<u8>,
+    path: String,
 }
 
 // Seriliazation and Deseriliazation
-impl Into<Vec<u8>> for Msg {
+impl Into<Vec<u8>> for &Msg {
     fn into(self) -> Vec<u8> {
         let mut msg = vec![self.msg_type as u8];
+        if self.fd.is_some() { msg.push(self.fd.unwrap() + 1) } else { msg.push(0) }
         msg.append(&mut self.path.as_bytes().to_vec());
 
         return msg;
     }
 }
 
-impl From<Vec<u8>> for Msg {
-    fn from(vec: Vec<u8>) -> Msg {
+impl From<&Vec<u8>> for Msg {
+    fn from(vec: &Vec<u8>) -> Msg {
         let mut vec = vec.clone(); // TODO: I'm tired
-        let msg_type: MsgType = if vec[0] == 0 { MsgType::Open } else { MsgType::Close };
-        vec.drain(..1);
+        let msg_type: MsgType = if vec[0] == 0 { MsgType::Open } else { MsgType::End };
+        let fd = if vec[1] == 0 { None } else { Some(vec[1] - 1) };
+        vec.drain(..2);
         let path = String::from_utf8(vec).unwrap();
-        dbg!( MsgType::Open == msg_type, &path);
-        Msg { msg_type, path}
+        Msg { msg_type, fd, path}
 
     }
 }
@@ -43,28 +45,48 @@ impl From<Vec<u8>> for Msg {
 
 // Send end Recieve
 impl Msg {
-    pub fn send(self, sock: UnixSocket, fd: i32) -> usize {
+    /**
+     * Warning: This is supposed to be blocking
+     */
+    pub fn send(&self, sock: &UnixSocket) -> usize {
 
-        if fd >= 0 {
-            let control: Vec<u8> = Vec::with_capacity(unsafe {CMSG_SPACE(size_of::<i32>() as u32)} as usize);
+        let vec: Vec<u8> = self.into();
 
-            let vec: Vec<u8> = self.into();
-            sock.send_msg(&[IoSlice::new(&vec)], Some(&control), 0).unwrap()
-        } else {
-            let vec: Vec<u8> = self.into();
-            sock.send_msg(&[IoSlice::new(&vec)], None, 0).unwrap()
+        // The end is never the end is never the end... until it is
+        let mut ret = sock.send(&vec, 0);
+        while ret.is_err() || ret.as_ref().unwrap_or(&0) <= &0 {
+            ret = sock.send(&vec, 0);
         }
+
+        return ret.unwrap();
+    }
+
+    /**
+     * Warning: This is supposed to be blocking
+     */
+    pub fn recieve(sock: &UnixSocket) -> Msg {
+        let mut buf = [0u8; 24];
+        let mut ret = sock.recv(&mut buf, 0);
+
+        // The end is never the end is never the end... until it is
+        while ret.is_err() || ret.as_ref().unwrap_or(&0) <= &0 {
+            ret = sock.recv(&mut buf, 0);
+        }
+
+        return Msg::from(&Vec::from(&buf[..ret.unwrap()]));
 
     }
 }
 
 
-
-pub struct RootInput {}
+pub struct RootInput {
+    //root_sock: UnixSocket,
+    pub user_sock: UnixSocket,
+    root_pid: pid_t
+}
 
 impl RootInput {
-    pub fn start() -> (UnixSocket, pid_t) {
-        let root_input = Self {};
+    pub fn start(devpath: &str) -> RootInput {
         if !is_root() {
             panic!("Not running as root");
         }
@@ -83,21 +105,95 @@ impl RootInput {
         } else if child == 0 {
             // We are the fork
             drop(user_sock);
-            RootInput::run(root_sock);
+            Self::run(root_sock, devpath);
             unsafe { libc::exit(1); };
         }
         //We are not the fork
         drop(root_sock);
 
-        //TODO: drop to user-specified uid (drop_root_to)
-        //TODO: user-specified dont drop roo
+        //TODO: drop to user-specified uid
+        //TODO: dont drop root if user-specified
         drop_root();
 
-        return (user_sock, child);
+        return Self {user_sock, root_pid: child};
     }
 
-    fn run(sock: UnixSocket) {
-        let mut buf = [0u8; 24]; // ? This should be enough
-        let len = sock.recv(&mut buf, 0);
+    pub fn open(user_sock: i32, path: &str) -> Result<i32, i32> {
+        let user_sock = unsafe { UnixSocket::from_raw_fd(user_sock) };
+        let msg = Msg { msg_type: MsgType::Open, fd: None, path: path.to_string() };
+        msg.send(&user_sock);
+
+        // ? Do we need to retry
+        let new_msg = Msg::recieve(&user_sock);
+        //TODO: Error handling
+        dbg!(path, new_msg.fd);
+        if new_msg.fd.is_some() {
+            Ok(new_msg.fd.unwrap() as i32)
+        } else {
+            Err(2)
+        }
+    }
+
+    /**
+     * This runs as root
+     */
+    fn run(sock: UnixSocket, devpath: &str) {
+        let mut running = true;
+        while running {
+            // This is blocking
+            let msg = Msg::recieve(&sock);
+
+            match msg.msg_type {
+                MsgType::Open => {
+                    if !msg.path.contains(devpath) {
+                        /* Hecker detected */
+                        dbg!("Hecker");
+                        return; // I think this exits out the function, and then exit(1) is called
+                    }
+
+                    //TODO: Rusty way
+                    errno::set_errno(errno::Errno(0));
+                    let path_c = CString::new(msg.path.as_str()).unwrap();
+                    let fd = unsafe { libc::open(path_c.as_ptr(), O_RDONLY/* |O_CLOEXEC|O_NOCTTY|O_NONBLOCK */) };
+                    dbg!(errno::errno());
+                    if errno::errno().0 == 0 {
+                        let msg = Msg { msg_type: MsgType::Open, fd: Some(fd as u8), path: "".to_string() };
+                        msg.send(&sock);
+                    } else {
+                        // ? Send close
+                        let msg = Msg { msg_type: MsgType::Open, fd: None, path: "".to_string() };
+                        msg.send(&sock);
+                    }
+
+                    // ? Is this right
+                    if fd >= 0 {
+                        unsafe { libc::close(fd) };
+                    }
+                    break;
+                },
+                MsgType::End => {
+                    running = false;
+                    let msg = Msg { msg_type: MsgType::End, fd: None, path: "".to_string() };
+                    msg.send(&sock);
+                    break;
+                }
+            };
+
+        }
+    }
+}
+
+// Drop RootInput
+impl Drop for RootInput {
+    // ? Is this safe
+    fn drop(&mut self) {
+        let msg = Msg { msg_type: MsgType::End, fd: None, path: "".to_string() };
+        msg.send(&self.user_sock);
+        Msg::recieve(&self.user_sock);
+
+        unsafe {
+            libc::waitpid(self.root_pid, null_mut(), 0);
+            libc::close(self.user_sock.as_raw_fd());
+        }
     }
 }

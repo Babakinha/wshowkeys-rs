@@ -4,18 +4,16 @@ use input::{LibinputInterface, event::{keyboard::{KeyboardEventTrait, KeyState}}
 use libc::close;
 use xkbcommon::xkb;
 
-use crate::{devmgr::devmgr_open, Wsk};
+use crate::{Wsk, rootinput::RootInput};
 
 /* Libinput */
-pub struct LibinputImpl {
-    pub devmgr: i32,
+pub struct LibinputImpl{
+    pub user_fd: i32,
 }
 
 impl LibinputInterface for LibinputImpl {
     fn open_restricted(&mut self, path: &Path, _flags: i32) -> Result<i32, i32> {
-        unsafe {
-            devmgr_open(self.devmgr, path.to_str().unwrap().to_string())
-        }
+        RootInput::open(self.user_fd,path.to_str().unwrap())
     }
 
     fn close_restricted(&mut self, fd: i32) {
@@ -26,7 +24,7 @@ impl LibinputInterface for LibinputImpl {
 }
 
 pub fn handle_libinput_event(wsk: &mut Wsk, event: &input::Event) {
-    println!("{:?}", event);
+    dbg!(event);
     if wsk.xkb_state.is_none() {
         return;
     }

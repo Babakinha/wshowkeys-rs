@@ -40,9 +40,8 @@ use crate::libinput_stuff::handle_libinput_event;
 #[derive(Default)]
 pub struct Wsk {
 
-    /* Devmgr, input, xkb */
-    devmgr: i32,
-    devmgr_pid: pid_t,
+    /* RootInput, input, xkb */
+    root_input: Option<RootInput>,
 
     input: Option<Libinput>,
 
@@ -110,17 +109,11 @@ impl Wsk {
 
 fn main() {
     /* Running as root :O */
-    RootInput::start();
-    return;
 
     let mut wsk = Wsk::default();
-
-    let (devmgr, devmgr_pid) = devmgr_start("/dev/input/");
+    wsk.root_input = Some(RootInput::start("/dev/input"));
 
     /* Normal user code :) */
-    wsk.devmgr = devmgr;
-    wsk.devmgr_pid = devmgr_pid;
-
     let _ret: i32 = 0;
 
     /* Default Settings */
@@ -137,7 +130,7 @@ fn main() {
     //TODO: Parse options
 
     /* Libinput */
-    wsk.input = Some(Libinput::new_with_udev(LibinputImpl { devmgr: devmgr } ));
+    wsk.input = Some(Libinput::new_with_udev(LibinputImpl { user_fd: wsk.root_input.as_ref().unwrap().user_sock.as_raw_fd() } ));
 
     /* Xkb */
     wsk.xkb_context = Some(xkb::Context::new(xkb::CONTEXT_NO_FLAGS));
@@ -204,7 +197,6 @@ fn main() {
     // The end is never the end is never the end is never the end is never the...
     while wsk.run {
         //TODO: Flush display?
-        wl_event_queue.blocking_dispatch(&mut wsk).unwrap();
         wl_event_queue.flush().unwrap();
 
         /* Poll */
@@ -229,6 +221,7 @@ fn main() {
         }
 
         if (pollfds[1].revents & POLLIN) != 0 {
+            wl_event_queue.blocking_dispatch(&mut wsk).unwrap();
         }
     }
 
@@ -238,5 +231,5 @@ fn main() {
 
 pub fn exit(wsk: Wsk) {
     drop(wsk.input.unwrap());
-    devmgr_finish(wsk.devmgr, wsk.devmgr_pid);
+    drop(wsk.root_input.unwrap());
 }
