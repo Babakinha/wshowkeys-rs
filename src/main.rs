@@ -130,7 +130,7 @@ fn main() {
     //TODO: Parse options
 
     /* Libinput */
-    wsk.input = Some(Libinput::new_with_udev(LibinputImpl { user_fd: wsk.root_input.as_ref().unwrap().user_sock.as_raw_fd() } ));
+    wsk.input = Some(Libinput::new_from_path(LibinputImpl { user_fd: wsk.root_input.as_ref().unwrap().user_sock.as_raw_fd() } ));
 
     /* Xkb */
     wsk.xkb_context = Some(xkb::Context::new(xkb::CONTEXT_NO_FLAGS));
@@ -221,7 +221,7 @@ fn main() {
         }
 
         if (pollfds[1].revents & POLLIN) != 0 {
-            wl_event_queue.blocking_dispatch(&mut wsk).unwrap();
+            //wl_event_queue.blocking_dispatch(&mut wsk).unwrap();
         }
     }
 

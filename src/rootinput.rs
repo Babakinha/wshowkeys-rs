@@ -1,4 +1,4 @@
-use std::{io::{IoSlice, IoSliceMut, self}, mem::size_of, ptr::null_mut, ffi::CString};
+use std::{io::{IoSlice, IoSliceMut, self, Read}, mem::size_of, ptr::null_mut, ffi::CString, fs::File, os::unix::prelude::FromRawFd};
 
 use libc::{SOCK_SEQPACKET, fork, pid_t, CMSG_SPACE, c_void, CMSG_FIRSTHDR, SOL_SOCKET, SCM_RIGHTS, CMSG_LEN, memcpy, CMSG_DATA, EINTR, O_NONBLOCK, O_RDONLY, O_CLOEXEC, O_NOCTTY};
 use posix_socket::{UnixSocket, ancillary::SocketAncillary};
@@ -88,17 +88,17 @@ pub struct RootInput {
 impl RootInput {
     pub fn start(devpath: &str) -> RootInput {
         if !is_root() {
-            panic!("Not running as root");
+            //panic!("Not running as root");
         }
 
         //Creates Socks
-        let (root_sock, user_sock) = UnixSocket::pair(SOCK_SEQPACKET, 0).unwrap();
+        let (user_sock, root_sock) = UnixSocket::pair(SOCK_SEQPACKET, 0).unwrap();
 
         //Create Forks
         let child = unsafe { fork() };
 
         if child < 0 {
-            // Error handling
+            // We failed to fork
             drop(root_sock);
             drop(user_sock);
             panic!("Unable to create fork");
@@ -113,7 +113,7 @@ impl RootInput {
 
         //TODO: drop to user-specified uid
         //TODO: dont drop root if user-specified
-        drop_root();
+        //drop_root();
 
         return Self {user_sock, root_pid: child};
     }
@@ -124,10 +124,18 @@ impl RootInput {
         msg.send(&user_sock);
 
         // ? Do we need to retry
+        dbg!( unsafe { libc::getuid() });
         let new_msg = Msg::recieve(&user_sock);
         //TODO: Error handling
         dbg!(path, new_msg.fd);
+        let mut test = unsafe { File::from_raw_fd(new_msg.fd.unwrap() as i32) };
+        let mut tstring = String::new();
+        test.read_to_string(&mut tstring).unwrap();
+        dbg!(tstring);
+
         if new_msg.fd.is_some() {
+
+
             Ok(new_msg.fd.unwrap() as i32)
         } else {
             Err(2)
@@ -151,10 +159,11 @@ impl RootInput {
                         return; // I think this exits out the function, and then exit(1) is called
                     }
 
-                    //TODO: Rusty way
+                    //TODO: Rusty way (OpenOptions?)
                     errno::set_errno(errno::Errno(0));
-                    let path_c = CString::new(msg.path.as_str()).unwrap();
-                    let fd = unsafe { libc::open(path_c.as_ptr(), O_RDONLY/* |O_CLOEXEC|O_NOCTTY|O_NONBLOCK */) };
+                    dbg!( unsafe { libc::getuid() });
+                    let path_c = CString::new("/home/babakinha/test.txt").unwrap();
+                    let fd = unsafe { libc::open(path_c.as_ptr(), O_RDONLY|O_CLOEXEC|O_NOCTTY|O_NONBLOCK) };
                     dbg!(errno::errno());
                     if errno::errno().0 == 0 {
                         let msg = Msg { msg_type: MsgType::Open, fd: Some(fd as u8), path: "".to_string() };
@@ -165,9 +174,16 @@ impl RootInput {
                         msg.send(&sock);
                     }
 
+                    unsafe { libc::sleep(10) };
+                    //let mut test = unsafe { File::from_raw_fd(fd) };
+                    //let mut tstring = String::new();
+                    //test.read_to_string(&mut tstring).unwrap();
+                    //dbg!(tstring);
+
                     // ? Is this right
                     if fd >= 0 {
-                        unsafe { libc::close(fd) };
+                        dbg!("Closed");
+                        unsafe { libc::close(fd) }; // ? Why does this work (if this isnt closed user cant read the file)
                     }
                     break;
                 },

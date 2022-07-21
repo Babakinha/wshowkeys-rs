@@ -157,10 +157,11 @@ impl Dispatch<WlSeat, ()> for Wsk {
             },
             wl_seat::Event::Name { name: _ } => {
                 // TODO: Support for multiple seats
-                if let Err(_) = wsk.input.as_mut().unwrap().udev_assign_seat("seat0") {
-                    eprintln!("Failed to assign libinput seat");
-                    wsk.run = false;
-                };
+                //if let Err(_) = wsk.input.as_mut().unwrap().udev_assign_seat("seat0") {
+                //    eprintln!("Failed to assign libinput seat");
+                //    wsk.run = false;
+                //};
+                wsk.input.as_mut().unwrap().path_add_device("/dev/input/event5");
             }
 
             _ => {}
