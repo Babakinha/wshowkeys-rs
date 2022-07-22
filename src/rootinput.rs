@@ -1,5 +1,5 @@
-use std::{io::{IoSliceMut, Read, IoSlice}, mem::size_of, ptr::null_mut, ffi::CString, fs::File, os::unix::{prelude::{FromRawFd, AsRawFd}, net::{UnixDatagram, SocketAncillary, AncillaryData}}};
-use libc::{SOCK_SEQPACKET, fork, pid_t, CMSG_SPACE, c_void, CMSG_FIRSTHDR, SOL_SOCKET, SCM_RIGHTS, CMSG_LEN, CMSG_DATA, O_NONBLOCK, O_RDONLY, O_CLOEXEC, O_NOCTTY};
+use std::{io::{IoSliceMut, IoSlice, Read}, ptr::null_mut, ffi::CString, os::unix::{prelude::{FromRawFd, AsRawFd}, net::{UnixDatagram, SocketAncillary, AncillaryData}}};
+use libc::{fork, pid_t, O_NONBLOCK, O_RDONLY, O_CLOEXEC, O_NOCTTY};
 use crate::root_utils::{is_root, drop_root};
 
 /* Msg */
@@ -32,6 +32,7 @@ impl From<&Vec<u8>> for Msg {
         let msg_type: MsgType = if vec[0] == 0 { MsgType::Open } else { MsgType::End };
         vec.drain(..1);
         let path = String::from_utf8(vec).unwrap();
+
         Msg { msg_type, fd: None, path}
 
     }
@@ -43,26 +44,25 @@ impl Msg {
     /**
      * Warning: This is supposed to be blocking
      */
-    pub fn send(&self, sock: &UnixDatagram) -> usize {
-        dbg!("Got Message To Send", &self.path, self.fd);
-
+    pub fn send(&self, sock: &UnixDatagram) -> std::io::Result<usize> {
         /* Normal Data */
-        let data_buf: Vec<u8> = self.into();
-        let data_slice = IoSlice::new(&data_buf);
+        let data: Vec<u8> = self.into();
+        let data_slice = IoSlice::new(&data[..]);
+        let data_bufs = &[data_slice][..];
 
         /* Fd Data */
         /*
             This needs to be in the control data
             for the os to understand to share the file descriptor
         */
-        let mut cdata_buf = [0u8; 48]; // ? This should be enough
+        let mut cdata_buf = [0; 128]; // ? This should be enough
         let mut cdata_ancilliary = SocketAncillary::new(&mut cdata_buf[..]);
-        if self.fd.is_some() {
+        if self.fd.is_some() && self.fd.unwrap() >= 0 {
             cdata_ancilliary.add_fds(&[self.fd.unwrap()]);
         }
 
         // Send it
-        sock.send_vectored_with_ancillary(&[data_slice], &mut cdata_ancilliary).unwrap() // This should be blocking
+        sock.send_vectored_with_ancillary(data_bufs, &mut cdata_ancilliary) // This should be blocking
     }
 
     /**
@@ -139,7 +139,9 @@ impl RootInput {
     pub fn open(user_sock: i32, path: &str) -> Result<i32, i32> {
         let user_sock = unsafe { UnixDatagram::from_raw_fd(user_sock) };
         let msg = Msg { msg_type: MsgType::Open, fd: None, path: path.to_string() };
-        msg.send(&user_sock);
+        // FIXME: Idk why, but after the first open, we get "Bad file descriptor", and i thinks that somehow the socket died
+        // ^ Thats why we cant use udev
+        msg.send(&user_sock).unwrap();
 
         // ? Do we need to retry
         let new_msg = Msg::recieve(&user_sock);
@@ -159,46 +161,31 @@ impl RootInput {
         let mut running = true;
         while running {
             // This is blocking
-            dbg!("Started Recieving");
             let msg = Msg::recieve(&sock);
-            dbg!("Recieved");
 
             match msg.msg_type {
                 MsgType::Open => {
-                    dbg!(&msg.path);
                     if !msg.path.contains(devpath) {
                         /* Hecker detected */
-                        dbg!("Hecker");
                         return; // I think this exits out the function, and then exit(1) is called
                     }
 
                     //TODO: Rusty way (OpenOptions?)
                     errno::set_errno(errno::Errno(0));
-                    dbg!( unsafe { libc::getuid() });
-                    let path_c = CString::new(msg.path).unwrap();
+                    let path_c = CString::new(msg.path.as_str()).unwrap();
                     let fd = unsafe { libc::open(path_c.as_ptr(), O_RDONLY|O_CLOEXEC|O_NOCTTY|O_NONBLOCK) };
-                    dbg!(errno::errno());
+
                     if errno::errno().0 == 0 {
-                        let msg = Msg { msg_type: MsgType::Open, fd: Some(fd), path: "Test".to_string() };
-                        dbg!("Sending msg");
-                        unsafe { libc::sleep(1) };
-                        msg.send(&sock);
-                        dbg!("Message sent");
+                        let msg = Msg { msg_type: MsgType::Open, fd: Some(fd), path: "".to_string() };
+                        msg.send(&sock).unwrap();
                     } else {
                         // ? Send close
-                        let msg = Msg { msg_type: MsgType::Open, fd: None, path: "Test".to_string() };
-                        msg.send(&sock);
+                        let msg = Msg { msg_type: MsgType::Open, fd: None, path: "".to_string() };
+                        msg.send(&sock).unwrap();
                     }
-
-                    //unsafe { libc::sleep(10) };
-                    //let mut test = unsafe { File::from_raw_fd(fd) };
-                    //let mut tstring = String::new();
-                    //test.read_to_string(&mut tstring).unwrap();
-                    //dbg!(tstring);
 
                     // ? Is this right
                     if fd >= 0 {
-                        dbg!("Closed");
                         unsafe { libc::close(fd) }; // ? Why does this work (if this isnt closed user cant read the file)
                     }
                     break;
@@ -206,7 +193,7 @@ impl RootInput {
                 MsgType::End => {
                     running = false;
                     let msg = Msg { msg_type: MsgType::End, fd: None, path: "".to_string() };
-                    msg.send(&sock);
+                    msg.send(&sock).unwrap();
                     break;
                 }
             };
@@ -220,7 +207,7 @@ impl Drop for RootInput {
     // ? Is this safe
     fn drop(&mut self) {
         let msg = Msg { msg_type: MsgType::End, fd: None, path: "".to_string() };
-        msg.send(&self.user_sock);
+        msg.send(&self.user_sock).unwrap();
         Msg::recieve(&self.user_sock);
 
         unsafe {

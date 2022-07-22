@@ -1,10 +1,10 @@
-use std::path::Path;
+use std::{path::Path, time::Instant};
 
 use input::{LibinputInterface, event::{keyboard::{KeyboardEventTrait, KeyState}}};
 use libc::close;
 use xkbcommon::xkb;
 
-use crate::{Wsk, rootinput::RootInput};
+use crate::{Wsk, rootinput::RootInput, wsk_keypress::WskKeypress};
 
 /* Libinput */
 pub struct LibinputImpl{
@@ -24,7 +24,6 @@ impl LibinputInterface for LibinputImpl {
 }
 
 pub fn handle_libinput_event(wsk: &mut Wsk, event: &input::Event) {
-    dbg!(event);
     if wsk.xkb_state.is_none() {
         return;
     }
@@ -39,13 +38,19 @@ pub fn handle_libinput_event(wsk: &mut Wsk, event: &input::Event) {
                 if key_state == KeyState::Released { xkb::KeyDirection::Up} else { xkb::KeyDirection::Down }
             );
 
-            let _key_sym = wsk.xkb_state.as_ref().unwrap().key_get_one_sym(key_code);
+            let key_sym = wsk.xkb_state.as_ref().unwrap().key_get_one_sym(key_code);
 
             if key_state == KeyState::Pressed {
-                //TODO: Key pressed
-                println!("TODO: Key Pressed")
+                let key_name = xkb::keysym_get_name(key_sym);
+                let key_utf8 =wsk.xkb_state.as_ref().unwrap().key_get_utf8(key_code);
+
+                let keypress = WskKeypress { sym: key_sym, name: key_name, utf8: key_utf8 };
+                wsk.keys.push(keypress);
             }
         },
         _ => {}
     }
+
+    wsk.last_keytime = Some(Instant::now());
+    wsk.set_dirty();
 }

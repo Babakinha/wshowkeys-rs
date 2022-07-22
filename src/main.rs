@@ -12,7 +12,7 @@ pub mod pango_stuff;
 pub mod shm_stuff;
 pub mod render_stuff;
 
-use std::{os::unix::prelude::AsRawFd, mem::size_of};
+use std::{os::unix::prelude::AsRawFd, mem::size_of, time::{Instant, Duration}};
 
 use input::Libinput;
 use libinput_stuff::LibinputImpl;
@@ -60,7 +60,7 @@ pub struct Wsk {
     specialfg: u32,
 
     font: String,
-    timeout: u32, // ? he uses i32 but i dont think we can have negative timeout
+    timeout: Duration,
 
     /* Wayland stuff */
     wl_connection: Option<Connection>,
@@ -91,7 +91,9 @@ pub struct Wsk {
 
     /* Keys */
     keys: Vec<WskKeypress>,
-    //last_keytime: timespec,
+    last_keytime: Option<Instant>,
+
+    keyboard_path: Option<String>,
 
     /* Misc */
     run: bool,
@@ -117,16 +119,16 @@ fn main() {
     wsk.root_input = Some(RootInput::start("/dev/input"));
 
     /* Normal user code :) */
-    let _ret: i32 = 0;
 
     /* Default Settings */
     let anchor: Anchor = Anchor::empty();
     let margin: [i32; 4] = [32, 32, 32, 32]; // Top, Right, Bottom, Left
+    wsk.keyboard_path = Some("/dev/input/event5".to_string());
     wsk.background = 0x000000CC;
     wsk.specialfg = 0xAAAAAAFF;
     wsk.foreground = 0xFFFFFFFF;
     wsk.font = "monospace 24".to_string();
-    wsk.timeout = 1;
+    wsk.timeout = Duration::new(1, 0);
 
     wsk.run = true;
 
@@ -202,7 +204,7 @@ fn main() {
     // ! Also make this dont kill the cpu
     while wsk.run {
         /* Poll */
-        wl_event_queue.flush().unwrap(); // ? Is this right
+        //wl_event_queue.flush().unwrap(); // ? Is this right
 
         let mut timeout = -1;
         if !wsk.keys.is_empty() {
@@ -214,6 +216,14 @@ fn main() {
             break;
         }
 
+        /* Clear out old key */
+        // FIXME: I dont think the bug is here but, while rendering the frame e only get one key at a time
+        let now = Instant::now();
+        if wsk.last_keytime.is_some() && now.duration_since(wsk.last_keytime.unwrap()) >= wsk.timeout {
+            dbg!("Clearing");
+            wsk.last_keytime = None;
+            wsk.set_dirty();
+        }
 
         /* Dispatch */
         if (pollfds[0].revents & POLLIN) != 0 {

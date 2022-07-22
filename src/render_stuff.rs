@@ -3,6 +3,7 @@ use crate::{Wsk, cairo_utils::ToSubpixelOrder, cairo_utils::SetSourceU32, pango_
 /* Rendering stuff (with cairo) */
 
 pub fn render_frame(wsk: &mut Wsk) {
+    dbg!("Frame");
     let recorder = cairo::RecordingSurface::create(cairo::Content::ColorAlpha, None).unwrap();
     let cairo = cairo::Context::new(&recorder).unwrap();
     // ? Should we make this user-definied
@@ -75,6 +76,7 @@ fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32
 
     // ? I dont know how, or if i should use iterators
     for key in &wsk.keys {
+        dbg!(&key.name);
         let mut special = false;
         let mut name = &key.utf8;
 
@@ -106,7 +108,8 @@ fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32
 
     }
 
-    wsk.keys = vec![];
+    wsk.keys.clear();
+    dbg!(width, height);
 
     return (width, height);
 
