@@ -11,8 +11,6 @@ udev = "0.6.3"
 errno = "*"
 rand = "0.8.5"
 
-posix-socket = "0.2.0"
-
 input = "0.7.1"
 xkbcommon = { version = "0.4.0", features = ["wayland"] }
 

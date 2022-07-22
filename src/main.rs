@@ -1,4 +1,5 @@
 //pub mod devmgr;
+#![feature(unix_socket_ancillary_data)]
 pub mod rootinput;
 pub mod root_utils;
 pub mod cairo_utils;
@@ -112,7 +113,6 @@ impl Wsk {
 
 fn main() {
     /* Running as root :O */
-
     let mut wsk = Wsk::default();
     wsk.root_input = Some(RootInput::start("/dev/input"));
 
@@ -191,6 +191,7 @@ fn main() {
     wsk.wl_surface.as_ref().unwrap().commit();
 
     //Polls
+    //TODO: Make this rusty
     let mut input = wsk.input.as_mut().unwrap().clone(); // ? There is no problem to clone right (i think its still a pointer)
     let mut pollfds: [pollfd; 2] = [
         pollfd { fd: input.as_raw_fd(), events: POLLIN, revents: 0 },
@@ -198,11 +199,11 @@ fn main() {
     ];
 
     // The end is never the end is never the end is never the end is never the...
+    // ! Also make this dont kill the cpu
     while wsk.run {
-        //TODO: Flush display?
-        wl_event_queue.flush().unwrap();
-
         /* Poll */
+        wl_event_queue.flush().unwrap(); // ? Is this right
+
         let mut timeout = -1;
         if !wsk.keys.is_empty() {
             timeout = 100;
@@ -218,13 +219,12 @@ fn main() {
         if (pollfds[0].revents & POLLIN) != 0 {
             input.dispatch().unwrap();
             for event in &mut input {
-                println!("Event!");
                 handle_libinput_event(&mut wsk, &event);
             }
         }
 
         if (pollfds[1].revents & POLLIN) != 0 {
-            //wl_event_queue.blocking_dispatch(&mut wsk).unwrap();
+            wl_event_queue.dispatch_pending(&mut wsk).unwrap();
         }
     }
 
