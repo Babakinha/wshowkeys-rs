@@ -1,4 +1,4 @@
-pub mod devmgr;
+//pub mod devmgr;
 pub mod rootinput;
 pub mod root_utils;
 pub mod cairo_utils;
@@ -13,22 +13,25 @@ pub mod render_stuff;
 
 use std::{os::unix::prelude::AsRawFd, mem::size_of};
 
-use input::{
-    Libinput,
-    ffi::{libinput_set_user_data},
-};
+use input::Libinput;
 use libinput_stuff::LibinputImpl;
 use rootinput::RootInput;
 use shm_stuff::PoolBuffer;
 use wayland_client::{
     protocol::{
-        wl_display::WlDisplay, wl_compositor::WlCompositor, wl_shm::WlShm, wl_seat::WlSeat, wl_keyboard::WlKeyboard, wl_surface::WlSurface, wl_output::{Subpixel, WlOutput}, wl_buffer::WlBuffer,
+        wl_display::WlDisplay,
+        wl_compositor::WlCompositor,
+        wl_shm::WlShm,
+        wl_seat::WlSeat,
+        wl_keyboard::WlKeyboard,
+        wl_surface::WlSurface,
+        wl_output::{Subpixel, WlOutput},
     },
     Connection, QueueHandle,
 };
 
-use devmgr::{devmgr_start, devmgr_finish};
-use libc::{pid_t, c_void, pollfd, POLLIN, poll, nfds_t};
+//use devmgr::{devmgr_start, devmgr_finish};
+use libc::{pollfd, POLLIN, poll, nfds_t};
 use wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_manager_v1::ZxdgOutputManagerV1;
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1::{ZwlrLayerShellV1, self}, zwlr_layer_surface_v1::{ZwlrLayerSurfaceV1, Anchor}};
 use wsk_keypress::WskKeypress;

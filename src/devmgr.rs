@@ -1,9 +1,9 @@
-use std::{ptr::{null_mut, null}, mem::size_of, process::exit};
+use std::{ptr::{null_mut}, mem::size_of, process::exit};
 
 use errno::set_errno;
 
-use libc::{getuid, socketpair, AF_UNIX, SOCK_SEQPACKET, c_int, fork, pid_t, close, size_t, iovec, c_void, msghdr, CMSG_SPACE, ssize_t, recvmsg, MSG_CMSG_CLOEXEC, CMSG_FIRSTHDR, memcpy, strstr, O_RDONLY, O_CLOEXEC, O_NOCTTY, O_NONBLOCK, open, SOL_SOCKET, SCM_RIGHTS, CMSG_LEN, CMSG_DATA, sendmsg, EINTR, waitpid, ENOTSOCK};
-use crate::root_utils::{drop_root, can_root};
+use libc::{getuid, socketpair, AF_UNIX, SOCK_SEQPACKET, c_int, fork, pid_t, close, size_t, iovec, c_void, msghdr, CMSG_SPACE, ssize_t, recvmsg, MSG_CMSG_CLOEXEC, CMSG_FIRSTHDR, memcpy, strstr, O_RDONLY, O_CLOEXEC, O_NOCTTY, O_NONBLOCK, open, SOL_SOCKET, SCM_RIGHTS, CMSG_LEN, CMSG_DATA, sendmsg, EINTR, waitpid};
+use crate::root_utils::{drop_root};
 /**
  * I Think this all is  a way to create a thread and send msgs in between
  */
