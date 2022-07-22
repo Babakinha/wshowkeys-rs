@@ -1,4 +1,4 @@
-use std::ptr::null_mut;
+use std::{ptr::null_mut, ffi::CString};
 
 use cairo::ImageSurface;
 use libc::{EEXIST, EINTR, shm_open, O_RDWR, O_CREAT, O_EXCL, shm_unlink, ftruncate, close, PROT_READ, PROT_WRITE, MAP_SHARED, c_void};
@@ -34,12 +34,12 @@ fn create_shm_file() -> i32 {
     while retries > 0 && errno::errno().0 == EEXIST {
         retries -= 1;
         let name = format!("/wl_shm-{}", rand_string(6));
-
+        let name_cstr = CString::new(name.as_str()).unwrap();
 
         // CLOEXEC is guaranteed to be set by shm_opn
-        let fd = unsafe { shm_open(name.as_ptr() as *const _ as *const i8, O_RDWR | O_CREAT | O_EXCL, 0600) };
+        let fd = unsafe { shm_open(name_cstr.as_ptr() as *const i8, O_RDWR | O_CREAT | O_EXCL, 0600) };
         if fd >= 0 {
-            unsafe { shm_unlink(name.as_ptr() as *const _ as *const i8); };
+            unsafe { shm_unlink(name_cstr.as_ptr() as *const i8); };
             return fd;
         }
     }
@@ -100,12 +100,14 @@ pub fn create_buffer<'a>(wsk: &mut Wsk, buf: &mut PoolBuffer, width: u32, height
 
 }
 
-pub fn get_next_buffer(wsk: &mut Wsk, pool: Vec<PoolBuffer>, width: u32, height: u32) -> PoolBuffer {
+//TODO: Rusty pls
+pub fn get_next_buffer(wsk: &mut Wsk, width: u32, height: u32) -> PoolBuffer {
     let mut buffer: Option<PoolBuffer> = None;
 
-    for p_buffer in pool {
+    // FIXME: This is important
+    for p_buffer in &wsk.buffers {
         if p_buffer.busy { continue; }
-        buffer = Some(p_buffer);
+        //buffer = Some(p_buffer);
     }
 
     if buffer.is_none() {
@@ -114,8 +116,9 @@ pub fn get_next_buffer(wsk: &mut Wsk, pool: Vec<PoolBuffer>, width: u32, height:
 
     let mut buffer = buffer.unwrap();
     if buffer.width != width || buffer.height != height {
-        drop(buffer);
-        return PoolBuffer::default(); // ? Not in original
+        if buffer.buffer.is_some() {
+            buffer.buffer.as_mut().unwrap().destroy();
+        }
     }
 
     if buffer.buffer.is_none() {

@@ -86,7 +86,6 @@ pub struct Wsk {
     scale: f64,
 
     buffers: Vec<PoolBuffer>,
-    temp_buffer: Option<*mut PoolBuffer>,
     current_buffer: Option<PoolBuffer>,
 
     /* Keys */
@@ -121,8 +120,8 @@ fn main() {
     /* Normal user code :) */
 
     /* Default Settings */
-    let anchor: Anchor = Anchor::empty();
-    let margin: [i32; 4] = [32, 32, 32, 32]; // Top, Right, Bottom, Left
+    let anchor: Anchor = Anchor::Bottom;
+    let margin: [i32; 4] = [64, 32, 0, 32]; // Top, Right, Bottom, Left
     wsk.keyboard_path = Some("/dev/input/event5".to_string());
     wsk.background = 0x000000CC;
     wsk.specialfg = 0xAAAAAAFF;
@@ -217,10 +216,10 @@ fn main() {
         }
 
         /* Clear out old key */
-        // FIXME: I dont think the bug is here but, while rendering the frame e only get one key at a time
         let now = Instant::now();
         if wsk.last_keytime.is_some() && now.duration_since(wsk.last_keytime.unwrap()) >= wsk.timeout {
             dbg!("Clearing");
+            wsk.keys.clear();
             wsk.last_keytime = None;
             wsk.set_dirty();
         }
@@ -235,6 +234,7 @@ fn main() {
 
         if (pollfds[1].revents & POLLIN) != 0 {
             wl_event_queue.dispatch_pending(&mut wsk).unwrap();
+            wl_event_queue.flush().unwrap();
         }
     }
 

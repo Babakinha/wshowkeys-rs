@@ -266,9 +266,9 @@ impl Dispatch<WlBuffer, ()> for Wsk {
         _qhandle: &QueueHandle<Self>,
     ) {
         if let wl_buffer::Event::Release {} = event {
-            // ? Is there a better way to do this with udata?
-            unsafe {
-                (*wsk.temp_buffer.unwrap()).busy = false;
+            // ? Is there a better way to do this with udata
+            if wsk.current_buffer.is_some() {
+                wsk.current_buffer.as_mut().unwrap().busy = false;
             }
         }
     }

@@ -1,4 +1,4 @@
-use crate::{Wsk, cairo_utils::ToSubpixelOrder, cairo_utils::SetSourceU32, pango_stuff::{get_text_size, pango_print}};
+use crate::{Wsk, cairo_utils::ToSubpixelOrder, cairo_utils::SetSourceU32, pango_stuff::{get_text_size, pango_print}, shm_stuff::get_next_buffer};
 
 /* Rendering stuff (with cairo) */
 
@@ -44,6 +44,7 @@ pub fn render_frame(wsk: &mut Wsk) {
     } else if height > 0 {
         //Replay recording into shm and send it off
         //TODO: get_next_buffer
+        wsk.current_buffer = Some(get_next_buffer(wsk, wsk.width, wsk.height));
         if wsk.current_buffer.is_none() {
             drop(recorder);
             drop(cairo);
@@ -74,9 +75,10 @@ fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32
     cairo.set_source_u32(wsk.background);
     cairo.paint().unwrap();
 
+    println!("Keys: {:?}", &wsk.keys);
+
     // ? I dont know how, or if i should use iterators
     for key in &wsk.keys {
-        dbg!(&key.name);
         let mut special = false;
         let mut name = &key.utf8;
 
@@ -108,9 +110,7 @@ fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32
 
     }
 
-    wsk.keys.clear();
-    dbg!(width, height);
-
     return (width, height);
+    //return (5000, 5000);
 
 }

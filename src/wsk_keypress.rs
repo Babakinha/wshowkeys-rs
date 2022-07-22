@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct WskKeypress {
     pub sym: xkbcommon::xkb::Keysym, // ? Is this right
     pub name: String,
