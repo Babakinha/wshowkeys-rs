@@ -1,5 +1,5 @@
 # wshowkeys-rs
-Wshowkeys is a program to show the keys you are pressing in wayland  
+Wshowkeys is a program to show the keys you are pressing for wayland  
   
 This repo is a "fork" of [a fork](https://github.com/ammgws/wshowkeys) of [the actual wshowkeys](https://git.sr.ht/~sircmpwn/wshowkeys)  
 I dont really know if you might consider this a fork since its rewritten in another language and doesnt even work yet
