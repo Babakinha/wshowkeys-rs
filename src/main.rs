@@ -9,7 +9,7 @@ pub mod wsk_keypress;
 pub mod libinput_stuff;
 pub mod wayland_stuff;
 pub mod pango_stuff;
-pub mod shm_stuff;
+//pub mod shm_stuff;
 pub mod render_stuff;
 
 use std::{os::unix::prelude::AsRawFd, mem::size_of, time::{Instant, Duration}};
@@ -17,7 +17,7 @@ use std::{os::unix::prelude::AsRawFd, mem::size_of, time::{Instant, Duration}};
 use input::Libinput;
 use libinput_stuff::LibinputImpl;
 use rootinput::RootInput;
-use shm_stuff::PoolBuffer;
+//use shm_stuff::PoolBuffer;
 use wayland_client::{
     protocol::{
         wl_display::WlDisplay,
@@ -27,6 +27,7 @@ use wayland_client::{
         wl_keyboard::WlKeyboard,
         wl_surface::WlSurface,
         wl_output::{Subpixel, WlOutput},
+        wl_buffer::WlBuffer
     },
     Connection, QueueHandle,
 };
@@ -66,8 +67,11 @@ pub struct Wsk {
     wl_connection: Option<Connection>,
     wl_display: Option<WlDisplay>,
     wl_qhandle: Option<QueueHandle<Wsk>>,
+
     wl_compositor: Option<WlCompositor>,
+
     wl_shm: Option<WlShm>,
+    wl_buffer: Option<WlBuffer>,
 
     wl_seat: Option<WlSeat>,
     wl_keyboard: Option<WlKeyboard>,
@@ -85,8 +89,7 @@ pub struct Wsk {
     height: u32,
     scale: f64,
 
-    buffers: Vec<PoolBuffer>,
-    current_buffer: Option<PoolBuffer>,
+    //buffers: Vec<PoolBuffer>,
 
     /* Keys */
     keys: Vec<WskKeypress>,
@@ -134,6 +137,8 @@ fn main() {
     //TODO: Parse options
 
     /* Libinput */
+    // FIXME: Looks like somehow the User Socket is getting dropped after the first open call
+    // TODO: After fixing the above bug change it to udev
     wsk.input = Some(Libinput::new_from_path(LibinputImpl { user_fd: wsk.root_input.as_ref().unwrap().user_sock.as_raw_fd() } ));
 
     /* Xkb */

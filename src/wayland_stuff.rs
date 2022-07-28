@@ -1,4 +1,4 @@
-use std::{ptr::null_mut, ffi::CStr};
+use std::{ptr::null_mut, ffi::CStr, os::unix::prelude::AsRawFd};
 
 use libc::{close, mmap, PROT_READ, MAP_SHARED, munmap, MAP_FAILED, c_char};
 use wayland_client::{
@@ -49,6 +49,13 @@ impl Dispatch<WlRegistry, ()> for Wsk {
                 "wl_shm" => {
                     let shm: WlShm = proxy.bind(name, version, qhandle, *data).unwrap();
                     wsk.wl_shm = Some(shm);
+
+                    //Create Shared file
+                    let mut file = tempfile::tempfile().unwrap();
+                    
+                    //TODO: Is this widht/height right?
+
+
                 },
 
                 "wl_shm_pool" => {
@@ -267,8 +274,8 @@ impl Dispatch<WlBuffer, ()> for Wsk {
     ) {
         if let wl_buffer::Event::Release {} = event {
             // ? Is there a better way to do this with udata
-            if wsk.current_buffer.is_some() {
-                wsk.current_buffer.as_mut().unwrap().busy = false;
+            if wsk.wl_buffer.is_some() {
+                wsk.wl_buffer.as_mut().unwrap();
             }
         }
     }

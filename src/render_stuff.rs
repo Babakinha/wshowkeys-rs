@@ -1,8 +1,10 @@
-use crate::{Wsk, cairo_utils::ToSubpixelOrder, cairo_utils::SetSourceU32, pango_stuff::{get_text_size, pango_print}, shm_stuff::get_next_buffer};
+use std::{fs::File, os::unix::prelude::AsRawFd, io::BufWriter, ptr::null_mut};
+
+use crate::{Wsk, cairo_utils::ToSubpixelOrder, cairo_utils::SetSourceU32, pango_stuff::{get_text_size, pango_print}};
+use wayland_client::{protocol::wl_shm, QueueHandle};
 
 /* Rendering stuff (with cairo) */
-
-pub fn render_frame(wsk: &mut Wsk) {
+pub fn render_frame(wsk: &mut Wsk, tmp: File) {
     dbg!("Frame");
     let recorder = cairo::RecordingSurface::create(cairo::Content::ColorAlpha, None).unwrap();
     let cairo = cairo::Context::new(&recorder).unwrap();
@@ -43,15 +45,16 @@ pub fn render_frame(wsk: &mut Wsk) {
         wsk.wl_surface.as_ref().unwrap().commit();
     } else if height > 0 {
         //Replay recording into shm and send it off
-        //TODO: get_next_buffer
-        wsk.current_buffer = Some(get_next_buffer(wsk, wsk.width, wsk.height));
-        if wsk.current_buffer.is_none() {
+        //wsk.current_buffer = Some(get_next_buffer(wsk, wsk.width, wsk.height));
+        if wsk.wl_buffer.is_none() {
             drop(recorder);
             drop(cairo);
             return;
         }
 
-        let shm = wsk.current_buffer.as_ref().unwrap().cairo.as_ref().unwrap();
+        //let shm = ;
+        // ? Is this right, do we need to do this every frame
+
         shm.save().unwrap();
         shm.set_operator(cairo::Operator::Clear);
         shm.paint().unwrap();
@@ -113,4 +116,50 @@ fn render_to_cairo(wsk: &mut Wsk, cairo: &cairo::Context, scale: f64, width: u32
     return (width, height);
     //return (5000, 5000);
 
+}
+
+/* Buffer stuff (For Shm) */
+pub fn create_buffer_stuff(wsk: &mut Wsk, tmp: &File, width: u32, height: u32, format: wl_shm::Format) {
+    // ? * 4 for argb
+    let pool = wsk.wl_shm.as_ref().unwrap().create_pool(tmp.as_raw_fd(),(width * height * 4) as i32, wsk.wl_qhandle.as_ref().unwrap(), ()).unwrap();
+    let buffer = pool.create_buffer(
+        0,
+        width as i32,
+        height as i32,
+        (width * 4) as i32,
+        format,
+        wsk.wl_qhandle.as_ref().unwrap(),
+        ()
+    ).unwrap();
+    wsk.wl_buffer = Some(buffer.clone());
+}
+
+pub fn create_cairo_stuff(wsk: &mut Wsk, tmp: &mut File , width: u32, height: u32)
+    -> ( cairo::ImageSurface, cairo::Context, pangocairo::pango::Context ) {
+    // ? Should we make it so we can change the format
+    //TODO: Make it rusty
+    let surface = unsafe {
+        let data_map = libc::mmap(
+            null_mut(),
+            (width * height * 4) as usize,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_STACK,
+            tmp.as_raw_fd(),
+            0
+        );
+
+        cairo::ImageSurface::create_for_data_unsafe(
+            data_map as *mut u8,
+            cairo::Format::ARgb32,
+            width as i32,
+            height as i32,
+            (width * 4) as i32
+
+        ).unwrap()
+    };
+
+    let pango = cairo::Context::new(&surface).unwrap();
+    let cairo = pangocairo::create_context(&pango).unwrap();
+
+    return ( surface, pango, cairo );
 }
